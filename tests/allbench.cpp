@@ -1,19 +1,7 @@
 
-#include "naivelinalg.h"
-
-#include "basic.h"
-
-#include "multiply.h"
-#include "transpose.h"
-#include "openmp.h"
-
-#include "best_tile_size.h"
-#ifndef BEST_TILE_SIZE
-#define BEST_TILE_SIZE -1
-#endif
-
 #include <random>
 
+#include <cstdint>
 #include <chrono>
 #include <ctime>
 #include <thread>
@@ -24,40 +12,43 @@
 
 #include "benchhelper.h"
 
-static void BM_OpenMP_primes_parallel(benchmark::State& state) {
-  int N = state.range(0);
-  int n_warmup = 3;
-  int num_threads = state.range(1);
-
-	//SETUP
-	bool* A = (bool*)malloc(N*sizeof(bool));
-
-	//warmup
-	for(int i = 0;i<n_warmup;i++){
-		primes_warmup(A,N);
+inline long double waste_time(uint64_t i, uint64_t M){
+	for(uint64_t j = 0;j<M;++j){
+		pow((long double)i, (long double)2.34868);
 	}
+}
 
+void waste_time_parallel(uint64_t N, uint64_t M){
+	#pragma omp parallel for
+	for(uint64_t i = 0; i < N; i++) {
+		waste_time(i, M);
+	}
+}
+
+static void BM_OpenMP_timewaste_parallel(benchmark::State& state) {
+  int N = state.range(0);
+  int M = state.range(1);
+  int num_threads = state.range(2);
+
+	omp_set_num_threads(num_threads);
 
   for (auto _ : state) {
-    auto start = std::chrono::high_resolution_clock::now();
-  	omp_set_num_threads(num_threads);
-	primes_parallel(A, N);
-    auto end   = std::chrono::high_resolution_clock::now();
-
-    auto elapsed_seconds =
-      std::chrono::duration_cast<std::chrono::duration<double>>(
-        end - start);
-
-
-
-    state.SetIterationTime(elapsed_seconds.count());
+    waste_time_parallel(N, M);
   }
-  state.SetItemsProcessed(state.iterations()*int64_t(N));
+  state.SetItemsProcessed(state.iterations()*int64_t(N)*int64_t(M));
 
   //TEARDOWN
-  free(A);
   state.counters["N"] = N;
+  state.counters["M"] = M;
   state.counters["num_threads"] = num_threads;
 }
-BENCHMARK(BM_OpenMP_primes_parallel)->UseManualTime()->ArgNames({"N", "num_threads"})->Args({SQUARES_SIZE,2})
-	->Args({SQUARES_SIZE,4});
+
+#define TOTAL_N 1000
+#define TOTAL_M 1000
+
+BENCHMARK(BM_OpenMP_timewaste_parallel)->UseRealTime()->ArgNames({"N", "M", "num_threads"})
+	->Args({TOTAL_N,TOTAL_M,1})
+	->Args({TOTAL_N,TOTAL_M,2})
+	->Args({TOTAL_N,TOTAL_M,3})
+	->Args({TOTAL_N,TOTAL_M,4})
+	;
